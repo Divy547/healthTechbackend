@@ -41,7 +41,16 @@ class PatientProcessor:
                         "action": "Unsupported drug",
                         "details": f"{drug} is not supported in the system."
                     },
-                    explanation="The requested drug is not supported in the pharmacogenomic engine."
+                    explanation={
+    "summary": f"{drug} is not supported in the pharmacogenomic engine.",
+    "genetic_factors": [],
+    "clinical_implications": "No pharmacogenomic assessment could be performed.",
+    "patient_friendly_explanation": (
+        f"The medication {drug} is not currently supported in our genetic analysis system."
+    ),
+    "references": []
+}
+
                 )
 
                 results.append(result)
@@ -78,7 +87,18 @@ class PatientProcessor:
                         "action": "No variant detected",
                         "details": f"No pharmacogenomic variants detected for {gene}."
                     },
-                    explanation="No relevant pharmacogenomic variants were found in the uploaded VCF."
+                    explanation={
+    "summary": f"No relevant pharmacogenomic variants were detected for {gene}.",
+    "genetic_factors": [],
+    "clinical_implications": (
+        "Without detected variants, no genotype-based drug modification is recommended."
+    ),
+    "patient_friendly_explanation": (
+        "Your genetic test did not show any significant variations affecting this medication."
+    ),
+    "references": []
+}
+
                 )
 
                 results.append(result)
@@ -120,7 +140,35 @@ class PatientProcessor:
                 risk_label=risk_label,
                 severity=severity,
                 recommendation=recommendation,
-                explanation="LLM explanation placeholder for now."
+                explanation = {
+    "summary": (
+        f"Genetic analysis identified a {gene} {diplotype} diplotype consistent with "
+        f"{phenotype} status. This genotype alters enzymatic activity and may "
+        f"impact therapeutic response to {drug}."
+    ),
+    "genetic_factors": [
+        f"Gene involved: {gene}",
+        f"Diplotype detected: {diplotype}",
+        f"Phenotype classification: {phenotype}"
+    ],
+    "clinical_implications": (
+        f"Patients with {phenotype} status for {gene} may experience altered "
+        f"drug metabolism affecting efficacy or toxicity. Clinical monitoring "
+        f"and guideline-based adjustments are recommended."
+    ),
+    "patient_friendly_explanation": (
+        f"Your genetic test shows that your body processes {drug} differently "
+        f"due to variations in the {gene} gene. This may affect how well the "
+        f"medicine works or increase side effects. Your doctor may adjust the "
+        f"dose or recommend an alternative medication."
+    ),
+    "references": [
+        f"CPIC Guideline for {gene} and {drug}",
+        "Clinical Pharmacogenetics Implementation Consortium (CPIC)",
+        "PharmGKB Database"
+    ]
+}
+
             )
 
             results.append(result)

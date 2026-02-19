@@ -25,7 +25,7 @@ class JSONBuilder:
         risk_label: str,
         severity: str,
         recommendation: dict,
-        explanation: str,
+        explanation: dict,
         parsing_success: bool = True
     ) -> PharmacogenomicResponse:
 
@@ -80,9 +80,7 @@ class JSONBuilder:
         # ----------------------------
         # LLM Explanation
         # ----------------------------
-        llm_generated_explanation = LLMGeneratedExplanation(
-            summary=explanation
-        )
+        llm_generated_explanation = LLMGeneratedExplanation(**explanation)
 
         # ----------------------------
         # Quality Metrics

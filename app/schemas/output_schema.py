@@ -61,6 +61,10 @@ class ClinicalRecommendation(BaseModel):
 # -----------------------------
 class LLMGeneratedExplanation(BaseModel):
     summary: str
+    genetic_factors: List[str]
+    clinical_implications: str
+    patient_friendly_explanation: str
+    references: Optional[List[str]] = []
 
 
 # -----------------------------
