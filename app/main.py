@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 origins = [
-    "http://localhost:3000",  # Next.js dev server
+    "http://localhost:3000", 
+    "https://health-techfrontend-qnkz.vercel.app/" # Next.js dev server
 ]
 
 app = FastAPI(
