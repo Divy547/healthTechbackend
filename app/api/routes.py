@@ -21,6 +21,7 @@ async def analyze(
     # -----------------------------------
     # 1️⃣ Validate file extension
     # -----------------------------------
+    print("🔥 /analyze endpoint hit")
     if not file.filename.endswith((".vcf", ".vcf.gz")):
         raise HTTPException(
             status_code=400,

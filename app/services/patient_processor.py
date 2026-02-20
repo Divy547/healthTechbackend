@@ -4,9 +4,15 @@ from app.engines.drug_risk_engine import DrugRiskEngine
 from app.engines.cpic_engine import CPICEngine
 from app.services.json_builder import JSONBuilder
 from app.core.constants import DRUG_GENE_MAP
-
+from app.services.llm_service import GeminiService
+from app.core.llm_prompts import DUAL_MODE_PGX_PROMPT as EXPLANATION_JSON_PROMPT
+import traceback
 
 class PatientProcessor:
+    print("🚀 PatientProcessor.process CALLED")
+    @staticmethod
+    def get_llm():
+        return GeminiService()
 
     @staticmethod
     def process(patient_data: dict, drugs: list):
@@ -42,22 +48,18 @@ class PatientProcessor:
                         "details": f"{drug} is not supported in the system."
                     },
                     explanation={
-    "summary": f"{drug} is not supported in the pharmacogenomic engine.",
-    "genetic_factors": [],
-    "clinical_implications": "No pharmacogenomic assessment could be performed.",
-    "patient_friendly_explanation": (
-        f"The medication {drug} is not currently supported in our genetic analysis system."
-    ),
-    "references": []
-}
-
+                        "summary": f"{drug} is not supported in the pharmacogenomic engine.",
+                        "genetic_factors": [],
+                        "clinical_implications": "No pharmacogenomic assessment could be performed.",
+                        "patient_friendly_explanation": f"{drug} is not supported yet.",
+                        "references": []
+                    }
                 )
-
                 results.append(result)
                 continue
 
             # -------------------------------------
-            # 2️⃣ Find Variant For Gene
+            # 2️⃣ Find Variant
             # -------------------------------------
             gene_variant = next(
                 (
@@ -69,11 +71,7 @@ class PatientProcessor:
 
             print("Found variant:", gene_variant)
 
-            # -------------------------------------
-            # 3️⃣ No Variant Found
-            # -------------------------------------
             if not gene_variant:
-
                 result = JSONBuilder.build(
                     patient_id=patient_data["patient_id"],
                     drug=drug,
@@ -88,47 +86,82 @@ class PatientProcessor:
                         "details": f"No pharmacogenomic variants detected for {gene}."
                     },
                     explanation={
-    "summary": f"No relevant pharmacogenomic variants were detected for {gene}.",
-    "genetic_factors": [],
-    "clinical_implications": (
-        "Without detected variants, no genotype-based drug modification is recommended."
-    ),
-    "patient_friendly_explanation": (
-        "Your genetic test did not show any significant variations affecting this medication."
-    ),
-    "references": []
-}
-
+                        "summary": f"No variants detected for {gene}.",
+                        "genetic_factors": [],
+                        "clinical_implications": "No genotype-based change recommended.",
+                        "patient_friendly_explanation": "Your genetics show no major impact on this drug.",
+                        "references": []
+                    }
                 )
-
                 results.append(result)
                 continue
 
             # -------------------------------------
-            # 4️⃣ Build Diplotype
+            # 3️⃣ Core Engines
             # -------------------------------------
             diplotype = DiplotypeEngine.build_diplotype(
                 gene_variant.get("star_allele"),
                 gene_variant.get("genotype")
             )
 
-            # -------------------------------------
-            # 5️⃣ Determine Phenotype
-            # -------------------------------------
             phenotype = PhenotypeEngine.get_phenotype(gene, diplotype)
-
-            # -------------------------------------
-            # 6️⃣ Risk Assessment
-            # -------------------------------------
             risk_label, severity = DrugRiskEngine.assess(drug, phenotype)
-
-            # -------------------------------------
-            # 7️⃣ CPIC Recommendation
-            # -------------------------------------
             recommendation = CPICEngine.get_recommendation(drug, phenotype)
 
             # -------------------------------------
-            # 8️⃣ Build Final JSON
+            # 4️⃣ Gemini Layer (SAFE)
+            # -------------------------------------
+            explanation = None
+
+            try:
+                prompt = EXPLANATION_JSON_PROMPT.format(
+                    gene=gene,
+                    diplotype=diplotype,
+                    phenotype=phenotype,
+                    drug=drug
+                )
+
+                raw_llm = PatientProcessor.get_llm().generate_json(prompt)
+                print("🧠 Gemini keys:", raw_llm.keys())
+
+                # Normalize dual-mode output
+                if isinstance(raw_llm, dict) and "doctor_explanation" in raw_llm:
+                    doc = raw_llm["doctor_explanation"] or {}
+                    patient = raw_llm.get("patient_explanation", {}) or {}
+
+                    explanation = {
+                        "summary": doc.get("clinical_summary") or f"{gene} affects {drug} response.",
+                        "genetic_factors": [
+                            f"Gene: {gene}",
+                            f"Diplotype: {diplotype}",
+                            f"Phenotype: {phenotype}",
+                        ],
+                        "clinical_implications": doc.get("prescription_guidance") or "Refer to pharmacogenomic guidelines.",
+                        "patient_friendly_explanation": patient.get("simple_summary") or "Your genetics may affect how this drug works.",
+                        "references": [doc.get("evidence_basis")] if doc.get("evidence_basis") else [],
+                    }
+
+                elif isinstance(raw_llm, dict):
+                    explanation = raw_llm
+
+            except Exception as e:
+                print("🚨 LLM failure FULL TRACE:")
+                traceback.print_exc()
+
+            # -------------------------------------
+            # 5️⃣ Final Fallback (Never crash)
+            # -------------------------------------
+            if not explanation:
+                explanation = {
+                    "summary": f"{gene} {diplotype} may influence response to {drug}.",
+                    "genetic_factors": [gene, diplotype, phenotype],
+                    "clinical_implications": "Pharmacogenomic variation detected.",
+                    "patient_friendly_explanation": "Your genetics may affect this medicine.",
+                    "references": ["CPIC", "PharmGKB"]
+                }
+
+            # -------------------------------------
+            # 6️⃣ Build Response
             # -------------------------------------
             result = JSONBuilder.build(
                 patient_id=patient_data["patient_id"],
@@ -140,35 +173,7 @@ class PatientProcessor:
                 risk_label=risk_label,
                 severity=severity,
                 recommendation=recommendation,
-                explanation = {
-    "summary": (
-        f"Genetic analysis identified a {gene} {diplotype} diplotype consistent with "
-        f"{phenotype} status. This genotype alters enzymatic activity and may "
-        f"impact therapeutic response to {drug}."
-    ),
-    "genetic_factors": [
-        f"Gene involved: {gene}",
-        f"Diplotype detected: {diplotype}",
-        f"Phenotype classification: {phenotype}"
-    ],
-    "clinical_implications": (
-        f"Patients with {phenotype} status for {gene} may experience altered "
-        f"drug metabolism affecting efficacy or toxicity. Clinical monitoring "
-        f"and guideline-based adjustments are recommended."
-    ),
-    "patient_friendly_explanation": (
-        f"Your genetic test shows that your body processes {drug} differently "
-        f"due to variations in the {gene} gene. This may affect how well the "
-        f"medicine works or increase side effects. Your doctor may adjust the "
-        f"dose or recommend an alternative medication."
-    ),
-    "references": [
-        f"CPIC Guideline for {gene} and {drug}",
-        "Clinical Pharmacogenetics Implementation Consortium (CPIC)",
-        "PharmGKB Database"
-    ]
-}
-
+                explanation=explanation
             )
 
             results.append(result)
